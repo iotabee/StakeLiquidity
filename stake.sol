@@ -108,6 +108,8 @@ contract StakeLiquidity {
         claimRewardOf[fdNo][rewardNo] = true;
 
         Reward memory rd = rewards[rewardNo];
+        require(rd.token == fd.token, "token wrong");
+
         uint256 multiAmount = (fd.amount * (divConst * fd.k + 52 * divConst)) /
             (52 * divConst);
 
