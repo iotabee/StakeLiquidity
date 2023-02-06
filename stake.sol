@@ -1,33 +1,34 @@
-//SPDX-License-Identifier: UNLICENSED
+// SPDX-License-Identifier: UNLICENSED
+//
 
 pragma solidity =0.8.17;
 
 contract StakeLiquidity {
+    // Division constant
     uint32 public constant divConst = 1000000;
 
-    //token=>staker=>balance
+    // token=>staker=>balance
     mapping(address => mapping(address => uint256)) public balanceOf;
 
     struct StakingDeposit {
-        address token; //staking token
-        address staker; //staker
+        address token; // staking token
+        address staker; // staker
         uint256 amount; // stake amount
         uint8 k; // staking time，1 to 52 weeks
         uint32 timestamp; // end time
     }
-    uint256 public stakingNonce; // auto increment
-    mapping(uint256 => StakingDeposit) public stakingDepositOf; //staking number => StakingDeposit data
-    mapping(address => uint256[]) public stakingDepositsOf; //staker => staking numbers
-
-    mapping(uint256 => mapping(uint24 => bool)) public claimRewardOf; //staking number => reward number => reward is claimed or not
-    address public rewardToken;
+    uint256 public stakingNonce; // auto increment, as staking number
+    mapping(uint256 => StakingDeposit) public stakingDepositOf; // staking number => StakingDeposit data
+    mapping(address => uint256[]) public stakingDepositsOf; // staker => staking numbers
+    mapping(uint256 => mapping(uint24 => bool)) public claimRewardOf; // staking number => reward number => reward is claimed or not
+    address public rewardToken; // token address, to set by the owner
     struct Reward {
-        address token;
+        address token; // the staking token address
         uint256 perAmount;
         uint256 divConst;
         uint32 timestamp;
     }
-    mapping(uint24 => Reward) public rewards;
+    mapping(uint24 => Reward) public rewards; // the owner to set
 
     address public owner;
     address internal newOwner;
@@ -39,7 +40,7 @@ contract StakeLiquidity {
     event ClaimReward(
         address indexed user,
         address indexed token,
-        uint256 fdNo,
+        uint256 sdNo,
         uint24 rewardNo
     );
     event SetReward(
@@ -54,12 +55,14 @@ contract StakeLiquidity {
         stakingNonce = 0;
     }
 
+    // user transfer the token to this contract with amount.
     function deposit(address token, uint256 amount) external {
         _safeTransferFrom(token, msg.sender, address(this), amount);
         balanceOf[token][msg.sender] += amount;
         emit Deposit(msg.sender, token, amount);
     }
 
+    // withdraw user's token with amount
     function withdraw(address token, uint256 amount) external {
         require(balanceOf[token][msg.sender] >= amount, "not enough");
         balanceOf[token][msg.sender] -= amount;
@@ -67,6 +70,11 @@ contract StakeLiquidity {
         emit Withdraw(msg.sender, token, amount);
     }
 
+    // stake token for a time between 1 week and 52 weeks
+    // @token token address for staking
+    // @amount token amount for staking
+    // @k the week count for staking
+    // return the staking number, and user should remember it
     function stakeToken(
         address token,
         uint256 amount,
@@ -82,41 +90,43 @@ contract StakeLiquidity {
             k: k,
             timestamp: uint32(block.timestamp) + uint32(k) * 604800
         });
+        stakingDepositsOf[msg.sender].push(stakingNonce);
         emit Stake(msg.sender, token, stakingNonce);
         return stakingNonce;
     }
 
+    //
     function unstakeToken(uint256 no) external returns (uint256) {
-        StakingDeposit storage fd = stakingDepositOf[no];
-        require(fd.staker == msg.sender, "forbbiden");
-        require(fd.amount > 0, "not exist fixed deposit");
-        require(fd.timestamp < block.timestamp, "unexpired time");
-        balanceOf[fd.token][msg.sender] += fd.amount;
-        fd.amount = 0;
+        StakingDeposit storage sd = stakingDepositOf[no];
+        require(sd.staker == msg.sender, "forbbiden");
+        require(sd.amount > 0, "not exist fixed deposit");
+        require(sd.timestamp < block.timestamp, "unexpired time");
+        balanceOf[sd.token][msg.sender] += sd.amount;
+        sd.amount = 0;
         delete stakingDepositOf[no];
-        emit Stake(msg.sender, fd.token, no);
-        return fd.amount;
+        emit Stake(msg.sender, sd.token, no);
+        return sd.amount;
     }
 
-    function claimReward(uint256 fdNo, uint24 rewardNo) external {
-        require(claimRewardOf[fdNo][rewardNo] == false, "have been taken");
-        StakingDeposit memory fd = stakingDepositOf[fdNo];
-        require(fd.staker == msg.sender, "forbbiden");
-        uint32 bT = fd.timestamp - uint32(fd.k) * 604800;
+    function claimReward(uint256 sdNo, uint24 rewardNo) external {
+        require(claimRewardOf[sdNo][rewardNo] == false, "have been claimed");
+        StakingDeposit memory sd = stakingDepositOf[sdNo];
+        require(sd.staker == msg.sender, "forbbiden");
+        uint32 bT = sd.timestamp - uint32(sd.k) * 604800;
         uint32 rT = rewards[rewardNo].timestamp;
-        require(bT < rT && fd.timestamp >= rT, "expired time");
-        claimRewardOf[fdNo][rewardNo] = true;
+        require(bT < rT && sd.timestamp >= rT, "expired time");
+        claimRewardOf[sdNo][rewardNo] = true;
 
         Reward memory rd = rewards[rewardNo];
-        require(rd.token == fd.token, "token wrong");
+        require(rd.token == sd.token, "token wrong");
 
-        uint256 multiAmount = (fd.amount * (divConst * fd.k + 52 * divConst)) /
+        uint256 multiAmount = (sd.amount * (divConst * sd.k + 52 * divConst)) /
             (52 * divConst);
 
         uint256 rewardAmount = (multiAmount * rd.perAmount) / rd.divConst;
         _safeTransfer(rewardToken, msg.sender, rewardAmount);
 
-        emit ClaimReward(msg.sender, fd.token, fdNo, rewardNo);
+        emit ClaimReward(msg.sender, sd.token, sdNo, rewardNo);
     }
 
     function setReward(
