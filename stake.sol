@@ -19,7 +19,10 @@ contract StakeLiquidity {
     }
     uint256 public stakingNonce; // auto increment, as staking number
     mapping(uint256 => StakingDeposit) public stakingDepositOf; // staking number => StakingDeposit data
-    mapping(address => uint256[]) public stakingDepositsOf; // staker => staking numbers
+
+    mapping(address => uint256[]) internal stakingDepositsOf; // internal,  staker => staking numbers
+    mapping(address => mapping(uint256 => uint256)) internal sdIndex; // internal,  staker => staking numbers => the index of uint256[] of stakingDepositsOf
+
     mapping(uint256 => mapping(uint24 => bool)) public claimRewardOf; // staking number => reward number => reward is claimed or not
     address public rewardToken; // token address, to set by the owner
     struct Reward {
@@ -90,12 +93,18 @@ contract StakeLiquidity {
             k: k,
             timestamp: uint32(block.timestamp) + uint32(k) * 604800
         });
+
         stakingDepositsOf[msg.sender].push(stakingNonce);
+        sdIndex[msg.sender][stakingNonce] =
+            stakingDepositsOf[msg.sender].length -
+            1;
+
         emit Stake(msg.sender, token, stakingNonce);
         return stakingNonce;
     }
 
-    //
+    // no is the staking number
+    // no can be got by calling the getStakingDeposits
     function unstakeToken(uint256 no) external returns (uint256) {
         StakingDeposit storage sd = stakingDepositOf[no];
         require(sd.staker == msg.sender, "forbbiden");
@@ -104,8 +113,23 @@ contract StakeLiquidity {
         balanceOf[sd.token][msg.sender] += sd.amount;
         sd.amount = 0;
         delete stakingDepositOf[no];
+
+        // delete the unstaked no from stakingDepositsOf
+        uint256[] storage data = stakingDepositsOf[msg.sender];
+        uint256 i = sdIndex[msg.sender][no];
+        if ((data.length - 1) != i) {
+            data[i] = data[data.length - 1];
+            sdIndex[msg.sender][data[i]] = i;
+        }
+        data.pop();
+        delete sdIndex[msg.sender][no];
+
         emit Stake(msg.sender, sd.token, no);
         return sd.amount;
+    }
+
+    function getStakingDeposits() external view returns (uint256[] memory) {
+        return stakingDepositsOf[msg.sender];
     }
 
     function claimReward(uint256 sdNo, uint24 rewardNo) external {
