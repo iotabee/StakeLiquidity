@@ -2,8 +2,9 @@
 //
 
 pragma solidity =0.8.17;
+import "./ownable.sol";
 
-contract StakeLiquidity {
+contract StakeLiquidity is Ownable {
     // Division constant
     uint32 public constant divConst = 1000000;
 
@@ -32,9 +33,6 @@ contract StakeLiquidity {
         uint32 timestamp;
     }
     mapping(uint24 => Reward) public rewards; // the owner to set
-
-    address public owner;
-    address internal newOwner;
 
     event Deposit(address indexed user, address indexed token, uint256 amount);
     event Withdraw(address indexed user, address indexed token, uint256 amount);
@@ -173,17 +171,6 @@ contract StakeLiquidity {
         });
 
         emit SetReward(msg.sender, token, rewardNo);
-    }
-
-    function setOwner(address _owner) external {
-        require(msg.sender == owner, "FORBIDDEN");
-        newOwner = _owner;
-    }
-
-    function acceptOwner() external {
-        require(msg.sender == newOwner, " FORBIDDEN");
-        owner = newOwner;
-        newOwner = address(0);
     }
 
     function _safeTransferFrom(
